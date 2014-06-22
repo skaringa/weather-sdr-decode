@@ -2,7 +2,7 @@
 
 # Decoder for weather data of sensors from Mebus received with RTL SDR
 # Typical usage: 
-# rtl_fm -M -f 868.35M -s 160k | ./decode_mebus.py -
+# rtl_fm -M -f 433.84M -s 160k | ./decode_mebus.py -
 # Help:
 # ./decode_mebus.py -h
 
@@ -23,7 +23,7 @@
 
 # References:
 # RTL SDR <http://sdr.osmocom.org/trac/wiki/rtl-sdr>
-# The weather sensors are manufactured by 
+# The weather sensors are manufactured by Albert Mebus GmbH, Haan, Germany
 
 import sys
 import io
@@ -34,7 +34,7 @@ import logging
 import argparse
 
 class decoder(object):
-  def __init__(self, noise_level=50, jitter=20):
+  def __init__(self, noise_level=500, jitter=20):
     self.noise_level = noise_level
     self.jitter = jitter
     self.signal_state = 0
@@ -43,6 +43,7 @@ class decoder(object):
     self.sync_on = []
     self.sync_off = []
     self.data = []
+    self.frames = []
     self.pulse_border = 0
     self.pulse_limit = 10000
 
@@ -51,9 +52,11 @@ class decoder(object):
     self.decoder_state = 'wait'
     self.sync_on = []
     self.sync_off = []
+    self.frames = []
 
   def repeat(self):
     logging.info("REPEATING...")
+    self.frames.append(self.data)
     self.decoder_state = 'repeat_1'
 
   def process(self, value):
@@ -65,9 +68,10 @@ class decoder(object):
         if (self.decoder_state == 'data') and (self.pulse_len > self.pulse_limit):
           # end of frame
           self.dump()
-          #self.decode()
           self.repeat()
         if (self.decoder_state == 'repeat_2') and (self.pulse_len > 2 * self.pulse_limit):
+          # End of packet
+          self.decode()
           self.reset()
       else:
         self.signal_goto_on()
@@ -189,11 +193,12 @@ class decoder(object):
       logging.warn("data exhausted")
       return 0
     for i in range(0, num): 
-      val += self.data.pop(0) << i
+      val <<= 1
+      val += self.data.pop(0)
     return val
 
   def dump(self):
-    logging.info("DUMP")
+    logging.info("DUMP Frame")
     s = ''
     i = 0
     for d in self.data:
@@ -201,78 +206,46 @@ class decoder(object):
         s += ' '
       s += str(d)
       i += 1
-    print s 
+    logging.info(s) 
 
   def decode(self):
-    sensor_types = ('Thermo', 'Thermo/Hygro', 'Rain(?)', 'Wind(?)', 'Thermo/Hygro/Baro', 'Luminance(?)', 'Pyrano(?)', 'Kombi')
-    sensor_data_count = (5, 8, 5, 8, 12, 6, 6, 14)
-
     logging.info("DECODE")
-    check = 0
-    sum = 0
-    sensor_type = self.popbits(4) & 7
-    if not self.expect_eon():
+    if len(self.frames) == 0:
+      logging.warn("Frame contains no data")
+      self.reset()
       return
-    check ^= sensor_type
-    sum += sensor_type
 
-    # read data as nibbles
-    nibble_count = sensor_data_count[sensor_type]
-    dec = []
-    for i in range(0, nibble_count):
-      nibble = self.popbits(4)
-      if not self.expect_eon():
+    # check if all frames contain the same data
+    check = self.frames[0]
+    for i in range(1, len(self.frames)):
+      if check != self.frames[i]:
+        logging.warn("Frame {0} is not equals to first one".format(i))
+        self.reset()
         return
-      dec.append(nibble)
-      check ^= nibble
-      sum += nibble
 
-    # check
-    if check != 0:
-      logging.warn("Check is not 0 but {0}".format(check))
-      return
-
-    # sum
-    sum_read = self.popbits(4)
-    sum += 5
-    sum &= 0xF
-    if sum_read != sum:
-      logging.warn("Sum read is {0} but computed is {1}".format(sum_read, sum))
-      return
+    id = self.popbits(11)
+    setkey = self.popbits(1)
+    channel = self.popbits(2)
+    temp = self.popbits(12) 
+    if temp >= 2048:
+      # negative value
+      temp = temp - 4096
+    hum = self.popbits(8)
 
     print(time.strftime("time: %x %X"))
-    print("sensor type: " + sensor_types[sensor_type])
-    print("address: {0}".format(dec[0] & 7))
-
-    print("temperature: {0}{1}.{2}".format(("-" if (dec[0]&8) else ''), dec[3]*10+dec[2], dec[1]))
-
-    if sensor_type == 7:
-      # Kombisensor
-      print("humidity: {0}".format(dec[5]*10+dec[4]))
-      print("wind: {0}.{1}".format(dec[8]*10+dec[7], dec[6]))
-      print("rain sum: {0}".format(dec[11]*16*16+dec[10]*16+dec[9]))
-      print("rain detector: {0}".format(dec[0]&2 == 1))
-    if (sensor_type == 1) or (sensor_type == 4):
-      # Thermo/Hygro
-      print("humidity: {0}.{1}".format(dec[6]*10+dec[5], dec[4]))
-    if sensor_type == 4:
-      # Thermo/Hygro/Baro
-      print("pressure: {0}".format(200+dec[9]*100+dec[8]*10+dec[7]))
+    print("id: {0}".format(id))
+    print("setkey: {0}".format(setkey))
+    print("channel: {0}".format(channel + 1))
+    print("temperature: {0}".format(temp/10.0))
+    print("humidity: {0}".format(hum))
 
     print
       
-  def expect_eon(self):
-    # check end of nibble (1)
-    if self.popbits(1) != 1:
-      logging.warn("end of nibble is not 1")
-      return False
-    return True
-
 def main():
-  parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR')
+  parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from Mebus received with RTL SDR')
   parser.add_argument('--log', type=str, default='WARN', help='Log level: DEBUG|INFO|WARN|ERROR. Default: WARN')
-  parser.add_argument('--noise', type=int, default='50', help='Signal level to distinguish noise from signal. Default: 50')
-  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -s 160k | ./decode_elv_wde1.py -")
+  parser.add_argument('--noise', type=int, default='500', help='Signal level to distinguish noise from signal. Default: 500')
+  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 433.84M -s 160k | ./decode_mebus.py -")
 
   args = parser.parse_args()
 
