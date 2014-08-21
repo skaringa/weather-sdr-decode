@@ -35,7 +35,7 @@ import logging
 import argparse
 
 class decoder(object):
-  def __init__(self, noise_level=50, jitter=5):
+  def __init__(self, noise_level=0, jitter=5):
     self.noise_level = noise_level
     self.jitter = jitter
     self.signal_state = 0
@@ -241,10 +241,32 @@ class decoder(object):
       return False
     return True
 
+  def detect_noise_level(self, values):
+    if (self.noise_level > 0):
+      return
+
+    steps = 656
+    divide = 65536 / steps
+    offset = steps / 2
+    table = [0] * steps
+    for val in values:
+      index = val / divide
+      table[index + offset] += 1
+
+    level = 0
+    for i in range(2, steps):
+      midval = (i-offset) * divide + (divide/2)
+      if table[i -2] > 0 and table[i-1] == 0 and table[i] == 0:
+        level = midval
+        break;
+
+    logging.info("Detected noise level: {0}".format(level))
+    self.noise_level = level
+
 def main():
   parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR')
   parser.add_argument('--log', type=str, default='WARN', help='Log level: DEBUG|INFO|WARN|ERROR. Default: WARN')
-  parser.add_argument('--noise', type=int, default='50', help='Signal level to distinguish noise from signal. Default: 50')
+  parser.add_argument('--noise', type=int, default='0', help='Signal level to distinguish noise from signal. Default: Autodetect')
   parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -s 160k | ./decode_elv_wde1.py -")
 
   args = parser.parse_args()
@@ -256,7 +278,7 @@ def main():
   logging.basicConfig(stream=sys.stderr, level=loglevel_num)
 
   noiselevel = args.noise
-  if noiselevel <= 0:
+  if noiselevel < 0:
     raise ValueError('Noise must be a positive integer value')
 
   dec = decoder(noiselevel)
@@ -268,6 +290,7 @@ def main():
   b = fin.read(512)
   while len(b) == 512:
     values = struct.unpack('256h', b)
+    dec.detect_noise_level(values)
     for val in values:
       dec.process(val)
     b = fin.read(512)
