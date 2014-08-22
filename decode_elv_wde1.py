@@ -35,138 +35,125 @@ import logging
 import argparse
 
 class decoder(object):
-  def __init__(self, noise_level=0, jitter=5):
-    self.noise_level = noise_level
-    self.jitter = jitter
-    self.signal_state = 0
-    self.pulse_len = -1
+  def __init__(self):
+    # We are sampling at 160khz (6.25us),
+    # and the length of a bit is always 1220us.
+    # Therefore the length of the buffer fo a whole bit is 195.2 samples.
+    # Round this down to avoid getting the next bit into the buffer
+    self.buf = [0] * 190
     self.decoder_state = 'wait'
-    self.sync_on = []
-    self.sync_off = []
-    self.data = []
-    self.pulse_border = 0
-    self.pulse_limit = 10000
-
-  def reset(self):
-    logging.info("WAITING...")
-    self.decoder_state = 'wait'
-    self.sync_on = []
-    self.sync_off = []
+    self.pulse_len = 0
+    self.on_level = 0
+    self.sync_count = 0
 
   def process(self, value):
+    x = self.buf.pop(0);
+    self.buf.append(value);
     self.pulse_len += 1
-    next_signal_state = 1 if value > self.noise_level else 0
-    #logging.debug("sample {0}: {1} ({2})".format(self.pulse_len, value, next_signal_state))
-    if self.signal_state == 0:
-      if next_signal_state == 0:
-        if (self.decoder_state == 'data') and (self.pulse_len > self.pulse_limit):
-          # end of frame
-          self.decode()
-          self.reset()
-      else:
-        self.signal_goto_on()
-    elif self.signal_state == 1:
-      if next_signal_state == 0:
-        self.signal_goto_off()
-    self.signal_state = next_signal_state
+    if self.pulse_len <= 190:
+      return # buffer not filled
 
-  def signal_goto_on(self):
     if self.decoder_state == 'wait':
-      logging.info("SYNCING...")
-      self.decoder_state = 'sync'
-    else:
-      self.signal_off(self.pulse_len)
-    self.pulse_len = 0
-
-  def signal_goto_off(self):
-    if self.decoder_state != 'wait':
-      self.signal_on(self.pulse_len)
-    self.pulse_len = 0
-
-  def signal_on(self, length):
-    logging.debug(" ON: {0}".format(length))
-    if self.decoder_state == 'sync':
-      self.sync_on_pulse(length)
-    elif self.decoder_state == 'start':
-      self.expect_start(self.bitval(length))
-    elif self.decoder_state == 'data':
-      self.databit(self.bitval(length))
-
-  def signal_off(self, length):
-    logging.debug("OFF: {0}".format(length))
-    if self.decoder_state == 'sync':
-      self.sync_off_pulse(length)
-
-  def bitval(self, length):
-    if (length > self.jitter) and (length < self.pulse_border):
-      return 1
-    if (length > self.pulse_border) and (length < self.pulse_limit):
-      return 0
-    logging.warn("on pulse too long")
-    self.reset()
-
-  def expect_start(self, value):
-    if value == 1:
+      self.sync_count = 0
       self.data = []
-      self.decoder_state = 'data'
-      logging.info("START")
+      self.test_sync0() # search for first sync bit
     else:
-      logging.warn("Start bit is not 1")
-      self.reset()
+      val = self.bitval()
+      logging.debug("bitval = {0}".format(val))
+      if val == -1:
+        logging.warn("Failed to decode bitval");
+        self.decoder_state = 'wait'
+      elif val == -10:
+        if (self.decoder_state == 'data'):
+          # end of frame?
+          self.decode()
+          self.decoder_state = 'wait'
+      elif self.decoder_state == 'sync':
+        if val == 0:
+          # another sync pulse
+          self.sync_count += 1
+        elif self.sync_count > 6:
+          # got the start bit
+          self.decoder_state = 'data'
+      elif self.decoder_state == 'data':
+        self.data.append(val)
 
-  def databit(self, value):
-    self.data.append(value)
+  def test_sync0(self):
+    # Test if the data in the buffer is the first sync bit
+    # This bit consists of high amplitude with 134..137 samples
+    # and low amplitude with 58..61 samples
+    sh = self.signal(0, 133)
+    sl = self.signal(138, 190)
+    avh = sh[0];
+    rgh = sh[1];
+    avl = sl[0];
+    rgl = sl[1];
 
-  def sync_on_pulse(self, length):
-    if (length > self.jitter) and (length < self.pulse_limit): 
-      self.sync_on.append(length)
-      if len(self.sync_on) > 10:
-        self.reset()
-    else:
-      self.reset()
-  
-  def sync_off_pulse(self, length):
-    if (length > self.jitter) and (length < self.pulse_limit): 
-      self.sync_off.append(length)
-      if len(self.sync_off) == 10:
-        self.verify_sync_block()
-    else:
-      self.reset()
-
-  def verify_sync_block(self):
-    if len(self.sync_on) != 10:
-      logging.warn('number of ON/OFF pulses in sync block != 10')
-      self.reset()
-      return
-    onl = self.sync_on[0]
-    offl = self.sync_off[0]
-    for i in range(1, 10):
-      onl += self.sync_on[i]
-      offl += self.sync_off[i]
-    onl /= 10
-    offl /= 10
-
-    logging.debug("onl={0} offl={1}".format(onl, offl))
+    if avh < rgh or avh < rgl:
+      return # average of high signal amplitude should be greater than noise
     
-    if onl - offl < 2 * self.jitter:
-      logging.warn('avr. length of ON pulses must be greater then length of OFF pulses in sync block')
-      self.reset()
-      return
-    for i in range(0, 10):
-      if math.fabs(onl - self.sync_on[i]) > self.jitter:
-        logging.warn('high jitter in sync block (ON)')
-        self.reset()
-        return
-      if math.fabs(offl - self.sync_off[i]) > self.jitter:
-        logging.warn('high jitter in sync block (OFF)')
-        self.reset()
-        return
+    if avh < avl:
+      return # high signal ampl. should be greater than low
+    
+    # We found a valid sync 0
+    self.decoder_state = 'sync'
+    self.on_level = (avh+avl)/2
+    self.pulse_len = 0
+    logging.info("SYNC!")
+    logging.debug("avh={0} avl={1}".format(avh, avl))
+    return
   
-    self.pulse_border = (onl + offl) / 2
-    self.pulse_limit = 2 * onl
-    self.decoder_state = 'start'
-    logging.info("SYNC! pulse_border={0} pulse_limit={1}".format(self.pulse_border, self.pulse_limit))
+  def signal(self, begin, end):
+    # compute average and range (max-min) of a signal(begin..end)
+    sm = 0
+    mn = 50000
+    mx = -50000
+    for i in range(begin, end):
+      v = self.buf[i]
+      sm += v
+      mn = min(mn, v)
+      mx = max(mx, v)
 
+    if mx > 32500 or mn < -32500:
+      logging.error("Clipped signal detected, you should reduce gain of receiver!")
+    return [sm/(end-begin), mx-mn] 
+
+  def bitval(self):
+    # detect start of bit: the signal should be at off, 
+    # so detect a transition to on
+    skip = 0
+    while skip < 20:
+      x = self.buf[skip]
+      if x > self.on_level:
+        break
+      skip += 1
+
+    self.pulse_len = -skip
+    logging.debug("skip={0}".format(skip))
+    if skip >= 20:
+      logging.debug("No starting slope off->on deteced")
+      return -10 
+    
+
+    # first 58 samples (366 us) always high signal
+    # but allow a jitter of 2 samples
+    val = -1
+    a = self.signal(skip+2, skip+56);
+    # Next 78 samples (488 us) either low or high depending on bitval 
+    m = self.signal(skip+60, skip+133)
+    # last 58 sample should be always low signal
+    e = self.signal(skip+138, 190)
+
+    if a[0] > a[1] and a[0] > e[0]:
+      if abs(m[0]-a[0]) > abs(m[0]-e[0]):
+        val = 1
+      else:
+        val = 0 
+
+    self.on_level = (a[0]+e[0])/2
+    logging.debug("bitval: a={0} m={1} e={2} val={3}".format(a[0], m[0], e[0], val))
+    return val
+     
   def popbits(self, num):
     val = 0
     if len(self.data) < num:
@@ -241,32 +228,9 @@ class decoder(object):
       return False
     return True
 
-  def detect_noise_level(self, values):
-    if (self.noise_level > 0):
-      return
-
-    steps = 656
-    divide = 65536 / steps
-    offset = steps / 2
-    table = [0] * steps
-    for val in values:
-      index = val / divide
-      table[index + offset] += 1
-
-    level = 0
-    for i in range(2, steps):
-      midval = (i-offset) * divide + (divide/2)
-      if table[i -2] > 0 and table[i-1] == 0 and table[i] == 0:
-        level = midval
-        break;
-
-    logging.info("Detected noise level: {0}".format(level))
-    self.noise_level = level
-
 def main():
-  parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR')
+  parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR.')
   parser.add_argument('--log', type=str, default='WARN', help='Log level: DEBUG|INFO|WARN|ERROR. Default: WARN')
-  parser.add_argument('--noise', type=int, default='0', help='Signal level to distinguish noise from signal. Default: Autodetect')
   parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -s 160k | ./decode_elv_wde1.py -")
 
   args = parser.parse_args()
@@ -277,11 +241,7 @@ def main():
     raise ValueError('Invalid log level: ' + loglevel)
   logging.basicConfig(stream=sys.stderr, level=loglevel_num)
 
-  noiselevel = args.noise
-  if noiselevel < 0:
-    raise ValueError('Noise must be a positive integer value')
-
-  dec = decoder(noiselevel)
+  dec = decoder()
 
   filename = args.inputfile[0]
   if filename == '-':
@@ -290,7 +250,6 @@ def main():
   b = fin.read(512)
   while len(b) == 512:
     values = struct.unpack('256h', b)
-    dec.detect_noise_level(values)
     for val in values:
       dec.process(val)
     b = fin.read(512)
