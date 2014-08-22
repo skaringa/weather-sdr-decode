@@ -45,6 +45,8 @@ class decoder(object):
     self.pulse_len = 0
     self.on_level = 0
     self.sync_count = 0
+    self.data = []
+    self.clipped = 0
 
   def process(self, value):
     x = self.buf.pop(0);
@@ -52,6 +54,9 @@ class decoder(object):
     self.pulse_len += 1
     if self.pulse_len <= 190:
       return # buffer not filled
+
+    if self.clipped % 10000 == 1:
+      logging.error("Clipped signal detected, you should reduce gain of receiver!")
 
     if self.decoder_state == 'wait':
       self.sync_count = 0
@@ -84,7 +89,7 @@ class decoder(object):
     # and low amplitude with 58..61 samples
     
     # due to performace issues, we can check a small range only
-    region_check = 12
+    region_check = 20
     avh = self.signal_avr(0, region_check)
     avl = self.signal_avr(190-region_check, 190)
     if avh < avl:
@@ -111,7 +116,7 @@ class decoder(object):
     mn = min(self.buf[begin:end])
     mx = max(self.buf[begin:end])
     if mx > 32500 or mn < -32500:
-      logging.error("Clipped signal detected, you should reduce gain of receiver!")
+      self.clipped += 1 
     return mx-mn
 
   def bitval(self):
@@ -227,7 +232,7 @@ class decoder(object):
 def main():
   parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR.')
   parser.add_argument('--log', type=str, default='WARN', help='Log level: DEBUG|INFO|WARN|ERROR. Default: WARN')
-  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -s 160k | ./decode_elv_wde1.py -")
+  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -g 50 -s 160k | ./decode_elv_wde1.py -")
 
   args = parser.parse_args()
 
