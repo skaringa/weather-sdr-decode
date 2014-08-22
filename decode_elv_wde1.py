@@ -61,7 +61,7 @@ class decoder(object):
       val = self.bitval()
       logging.debug("bitval = {0}".format(val))
       if val == -1:
-        logging.warn("Failed to decode bitval");
+        # Failed to decode bitval
         self.decoder_state = 'wait'
       elif val == -10:
         if (self.decoder_state == 'data'):
@@ -82,18 +82,18 @@ class decoder(object):
     # Test if the data in the buffer is the first sync bit
     # This bit consists of high amplitude with 134..137 samples
     # and low amplitude with 58..61 samples
-    sh = self.signal(0, 133)
-    sl = self.signal(138, 190)
-    avh = sh[0];
-    rgh = sh[1];
-    avl = sl[0];
-    rgl = sl[1];
-
-    if avh < rgh or avh < rgl:
-      return # average of high signal amplitude should be greater than noise
     
+    # due to performace issues, we can check a small range only
+    region_check = 12
+    avh = self.signal_avr(0, region_check)
+    avl = self.signal_avr(190-region_check, 190)
     if avh < avl:
       return # high signal ampl. should be greater than low
+
+    rgh = self.signal_range(0, region_check)
+    rgl = self.signal_range(190-region_check, 190)
+    if avh < rgh or avh < rgl:
+      return # average of high signal amplitude should be greater than noise
     
     # We found a valid sync 0
     self.decoder_state = 'sync'
@@ -103,20 +103,16 @@ class decoder(object):
     logging.debug("avh={0} avl={1}".format(avh, avl))
     return
   
-  def signal(self, begin, end):
-    # compute average and range (max-min) of a signal(begin..end)
-    sm = 0
-    mn = 50000
-    mx = -50000
-    for i in range(begin, end):
-      v = self.buf[i]
-      sm += v
-      mn = min(mn, v)
-      mx = max(mx, v)
+  def signal_avr(self, begin, end):
+    sm = sum(self.buf[begin:end])
+    return sm/(end-begin) 
 
+  def signal_range(self, begin, end):
+    mn = min(self.buf[begin:end])
+    mx = max(self.buf[begin:end])
     if mx > 32500 or mn < -32500:
       logging.error("Clipped signal detected, you should reduce gain of receiver!")
-    return [sm/(end-begin), mx-mn] 
+    return mx-mn
 
   def bitval(self):
     # detect start of bit: the signal should be at off, 
@@ -133,25 +129,25 @@ class decoder(object):
     if skip >= 20:
       logging.debug("No starting slope off->on deteced")
       return -10 
-    
 
     # first 58 samples (366 us) always high signal
     # but allow a jitter of 2 samples
     val = -1
-    a = self.signal(skip+2, skip+56);
+    aa = self.signal_avr(skip+2, skip+56);
+    ar = self.signal_range(skip+2, skip+56);
     # Next 78 samples (488 us) either low or high depending on bitval 
-    m = self.signal(skip+60, skip+133)
+    ma = self.signal_avr(skip+60, skip+133)
     # last 58 sample should be always low signal
-    e = self.signal(skip+138, 190)
+    ea = self.signal_avr(skip+138, 190)
 
-    if a[0] > a[1] and a[0] > e[0]:
-      if abs(m[0]-a[0]) > abs(m[0]-e[0]):
+    if aa > ar and aa > ea:
+      if abs(ma-aa) > abs(ma-ea):
         val = 1
       else:
         val = 0 
 
-    self.on_level = (a[0]+e[0])/2
-    logging.debug("bitval: a={0} m={1} e={2} val={3}".format(a[0], m[0], e[0], val))
+    self.on_level = (aa+ea)/2
+    logging.debug("bitval: a={0} m={1} e={2} val={3}".format(aa, ma, ea, val))
     return val
      
   def popbits(self, num):
