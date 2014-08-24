@@ -2,7 +2,7 @@
 
 # Decoder for weather data of sensors from ELV received with RTL SDR
 # Typical usage: 
-# rtl_fm -M -f 868.35M -s 160k | ./decode_elv_wde1.py -
+# rtl_fm -M -f 868.35M -s 30k | ./decode_elv_wde1.py -
 # Help:
 # ./decode_elv_wde1.py -h
 
@@ -36,11 +36,11 @@ import argparse
 
 class decoder(object):
   def __init__(self):
-    # We are sampling at 160khz (6.25us),
+    # We are sampling at 30khz (33.3us),
     # and the length of a bit is always 1220us.
-    # Therefore the length of the buffer fo a whole bit is 195.2 samples.
-    # Round this down to avoid getting the next bit into the buffer
-    self.buf = [0] * 190
+    # Therefore the length of the buffer fo a whole bit is 36.6 samples.
+    # Round this down to 35 avoid getting the next bit into the buffer
+    self.buf = [0] * 35
     self.decoder_state = 'wait'
     self.pulse_len = 0
     self.on_level = 0
@@ -52,7 +52,7 @@ class decoder(object):
     x = self.buf.pop(0);
     self.buf.append(value);
     self.pulse_len += 1
-    if self.pulse_len <= 190:
+    if self.pulse_len <= 35:
       return # buffer not filled
 
     if self.clipped % 10000 == 1:
@@ -72,31 +72,30 @@ class decoder(object):
         if (self.decoder_state == 'data'):
           # end of frame?
           self.decode()
-          self.decoder_state = 'wait'
+        self.decoder_state = 'wait'
       elif self.decoder_state == 'sync':
         if val == 0:
           # another sync pulse
           self.sync_count += 1
-        elif self.sync_count > 6:
+        elif val == 1 and self.sync_count > 6:
           # got the start bit
+          logging.info('DATA')
           self.decoder_state = 'data'
       elif self.decoder_state == 'data':
         self.data.append(val)
 
   def test_sync0(self):
     # Test if the data in the buffer is the first sync bit
-    # This bit consists of high amplitude with 134..137 samples
-    # and low amplitude with 58..61 samples
+    # This bit consists of high amplitude with ~21 samples
+    # and low amplitude with ~10 samples
     
-    # due to performace issues, we can check a small range only
-    region_check = 20
-    avh = self.signal_avr(0, region_check)
-    avl = self.signal_avr(190-region_check, 190)
-    if avh < avl:
+    avh = self.signal_avr(0, 20)
+    avl = self.signal_avr(26, 33)
+    if avh < avl * 2:
       return # high signal ampl. should be greater than low
 
-    rgh = self.signal_range(0, region_check)
-    rgl = self.signal_range(190-region_check, 190)
+    rgh = self.signal_range(0, 20)
+    rgl = self.signal_range(26, 33)
     if avh < rgh or avh < rgl:
       return # average of high signal amplitude should be greater than noise
     
@@ -120,10 +119,10 @@ class decoder(object):
     return mx-mn
 
   def bitval(self):
-    # detect start of bit: the signal should be at off, 
+    # detect start of bit: the signal shouldnow be at off level, 
     # so detect a transition to on
     skip = 0
-    while skip < 20:
+    while skip < 4:
       x = self.buf[skip]
       if x > self.on_level:
         break
@@ -131,21 +130,20 @@ class decoder(object):
 
     self.pulse_len = -skip
     logging.debug("skip={0}".format(skip))
-    if skip >= 20:
+    if skip >= 4:
       logging.debug("No starting slope off->on deteced")
       return -10 
 
-    # first 58 samples (366 us) always high signal
-    # but allow a jitter of 2 samples
+    # first 12 samples always high signal
+    # but allow a jitter of 1 sample
     val = -1
-    aa = self.signal_avr(skip+2, skip+56);
-    ar = self.signal_range(skip+2, skip+56);
-    # Next 78 samples (488 us) either low or high depending on bitval 
-    ma = self.signal_avr(skip+60, skip+133)
-    # last 58 sample should be always low signal
-    ea = self.signal_avr(skip+138, 190)
+    aa = self.signal_avr(skip, skip+10);
+    # Next 12 samples either low or high depending on bitval 
+    ma = self.signal_avr(skip+13, skip+22)
+    # last 12 samples should be always low signal
+    ea = self.signal_avr(skip+25, 33)
 
-    if aa > ar and aa > ea:
+    if aa > ea:
       if abs(ma-aa) > abs(ma-ea):
         val = 1
       else:
@@ -232,7 +230,7 @@ class decoder(object):
 def main():
   parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR.')
   parser.add_argument('--log', type=str, default='WARN', help='Log level: DEBUG|INFO|WARN|ERROR. Default: WARN')
-  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -g 50 -s 160k | ./decode_elv_wde1.py -")
+  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order and 30 kHz sample rate. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -s 30k | ./decode_elv_wde1.py -")
 
   args = parser.parse_args()
 

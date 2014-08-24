@@ -30,7 +30,7 @@ I've tested it with:
 
 *Typical usage:* 
 
-  rtl\_fm -M -f 868.35M -s 160k | ./decode\_elv\_wde1.py -
+  rtl\_fm -M -f 868.35M -s 30k | ./decode\_elv\_wde1.py -
 
 *Help:* 
 
