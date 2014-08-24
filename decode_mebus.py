@@ -34,7 +34,7 @@ import logging
 import argparse
 
 class decoder(object):
-  def __init__(self, noise_level=500, jitter=20):
+  def __init__(self, noise_level=500, jitter=4):
     self.noise_level = noise_level
     self.jitter = jitter
     self.signal_state = 0
