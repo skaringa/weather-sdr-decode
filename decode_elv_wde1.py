@@ -49,8 +49,8 @@ class decoder(object):
     self.clipped = 0
 
   def process(self, value):
-    x = self.buf.pop(0);
-    self.buf.append(value);
+    self.buf.pop(0)
+    self.buf.append(value)
     self.pulse_len += 1
     if self.pulse_len <= 35:
       return # buffer not filled
