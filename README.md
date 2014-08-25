@@ -53,7 +53,7 @@ This program decodes weather data produces by wiresless sensors from _Mebus_ lik
 
 *Typical usage:* 
 
-  rtl\_fm -M -f 433.84M -s 160k | ./decode\_mebus.py -
+  rtl\_fm -M -f 433.84M -s 30k | ./decode\_mebus.py -
 
 *Help:* 
 
