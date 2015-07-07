@@ -7,7 +7,7 @@ Prerequisites
 =============
 
 * [rtl-sdr](http://sdr.osmocom.org/trac/wiki/rtl-sdr) 
-* Python 2.7
+* Python 2.7, on slow machines [PyPy](http://pypy.org) is recommended
 * Wireless weather sensor
 
 decode\_elv\_wde1.py
@@ -64,6 +64,13 @@ References
 
 * [RTL SDR](http://sdr.osmocom.org/trac/wiki/rtl-sdr)
 * The weather sensors are manufactured by Albert Mebus GmbH, Haan, Germany
+
+Performance
+===========
+
+To decode in real time on machines with a slower CPU like the Raspberry Pi, the usage of [PyPy](http://pypy.org) as Python interpreter is recommended. The script decode\_elv\_wde1.py runs four times faster with PyPy. To set it as standard interpreter, change the first line of the script into
+
+  #!/usr/bin/env pypy
 
 License
 =======
