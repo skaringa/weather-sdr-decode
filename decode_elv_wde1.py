@@ -38,121 +38,80 @@ class decoder(object):
   def __init__(self):
     # We are sampling at 30khz (33.3us),
     # and the length of a bit is always 1220us.
-    # Therefore the length of the buffer fo a whole bit is 36.6 samples.
-    # Round this down to 35 avoid getting the next bit into the buffer
-    self.buf = [0] * 35
+    # Therefore the length of a valid bit is 36.6 samples.
+    self.buf_len = 35
+    self.buf = [0] * self.buf_len
     self.decoder_state = 'wait'
-    self.pulse_len = 0
-    self.on_level = 0
-    self.sync_count = 0
     self.data = []
-    self.clipped = 0
+    self.min_len = 30
+    self.max_len = 40
+    self.pulse_len = 0
+    self.pulse_lo = 0
+    self.pulse_y = 0
+    self.sync_count = 0
 
   def process(self, value):
+    y = self.signal(value)
+    self.pulse_len += 1
+    if y == 0:
+      self.pulse_lo += 1
+    if y != self.pulse_y and y != 0:
+      # slope low->high
+      self.pulse()
+      self.pulse_len = 1
+      self.pulse_lo = 0
+    self.pulse_y = y
     self.buf.pop(0)
     self.buf.append(value)
-    self.pulse_len += 1
-    if self.pulse_len <= 35:
-      return # buffer not filled
 
-    if self.clipped % 10000 == 1:
-      logging.error("Clipped signal detected, you should reduce gain of receiver!")
+  def finish(self):
+    if self.decoder_state == 'data':
+      self.data.append(1)
+      self.decode()
 
-    if self.decoder_state == 'wait':
-      self.sync_count = 0
-      self.data = []
-      self.test_sync0() # search for first sync bit
-    else:
-      val = self.bitval()
-      logging.debug("bitval = {0}".format(val))
-      if val == -1:
-        # Failed to decode bitval
-        self.decoder_state = 'wait'
-      elif val == -10:
-        if (self.decoder_state == 'data'):
-          # end of frame?
-          self.decode()
-        self.decoder_state = 'wait'
-      elif self.decoder_state == 'sync':
-        if val == 0:
-          # another sync pulse
-          self.sync_count += 1
-        elif val == 1 and self.sync_count > 6:
-          # got the start bit
-          logging.info('DATA')
-          self.decoder_state = 'data'
-      elif self.decoder_state == 'data':
-        self.data.append(val)
-
-  def test_sync0(self):
-    # Test if the data in the buffer is the first sync bit
-    # This bit consists of high amplitude with ~21 samples
-    # and low amplitude with ~10 samples
+  def signal(self, value):
+    avr = sum(self.buf) / self.buf_len
+    logging.debug("avr={0}".format(avr))
+    return 0 if value < avr else 1
     
-    avh = self.signal_avr(0, 20)
-    avl = self.signal_avr(26, 33)
-    if avh < avl * 2:
-      return # high signal ampl. should be greater than low
-
-    rgh = self.signal_range(0, 20)
-    rgl = self.signal_range(26, 33)
-    if avh < rgh or avh < rgl:
-      return # average of high signal amplitude should be greater than noise
-    
-    # We found a valid sync 0
-    self.decoder_state = 'sync'
-    self.on_level = (avh+avl)/2
-    self.pulse_len = 0
-    logging.info("SYNC!")
-    logging.debug("avh={0} avl={1}".format(avh, avl))
-    return
-  
-  def signal_avr(self, begin, end):
-    sm = sum(self.buf[begin:end])
-    return sm/(end-begin) 
-
-  def signal_range(self, begin, end):
-    mn = min(self.buf[begin:end])
-    mx = max(self.buf[begin:end])
-    if mx > 32500 or mn < -32500:
-      self.clipped += 1 
-    return mx-mn
-
   def bitval(self):
-    # detect start of bit: the signal shouldnow be at off level, 
-    # so detect a transition to on
-    skip = 0
-    while skip < 4:
-      x = self.buf[skip]
-      if x > self.on_level:
-        break
-      skip += 1
-
-    self.pulse_len = -skip
-    logging.debug("skip={0}".format(skip))
-    if skip >= 4:
-      logging.debug("No starting slope off->on deteced")
-      return -10 
-
-    # first 12 samples always high signal
-    # but allow a jitter of 1 sample
     val = -1
-    aa = self.signal_avr(skip, skip+10);
-    # Next 12 samples either low or high depending on bitval 
-    ma = self.signal_avr(skip+13, skip+22)
-    # last 12 samples should be always low signal
-    ea = self.signal_avr(skip+25, 33)
-
-    if aa > ea:
-      if abs(ma-aa) > abs(ma-ea):
-        val = 1
+    if self.pulse_len >= self.min_len and self.pulse_len <= self.max_len:
+      if self.pulse_lo < self.pulse_len / 2:
+        val = 0
       else:
-        val = 0 
+        val = 1
 
-    self.on_level = (aa+ea)/2
-    logging.debug("bitval: a={0} m={1} e={2} val={3}".format(aa, ma, ea, val))
+    logging.debug("bitval: len={0} lo={1} val={2}".format(self.pulse_len, self.pulse_lo, val))
     return val
-     
+    
+  def pulse(self):
+    val = self.bitval()
+    if val == -1:
+      if self.decoder_state == 'data':
+        # end of frame?
+        self.data.append(1)
+        self.decode()
+        self.data = []
+      self.decoder_state = 'wait'
+    elif self.decoder_state == 'wait':
+      if val == 0:
+        # first sync pulse
+        self.sync_count = 1;
+        self.decoder_state = 'sync';
+        logging.info("SYNC")
+    elif self.decoder_state == 'sync':
+      if val == 0:
+        # another sync pulse
+        self.sync_count += 1
+      elif val == 1 and self.sync_count > 6:
+        # got the start bit
+        self.sync_count = 0
+        self.decoder_state = 'data'
+        logging.info("DATA")
+    elif self.decoder_state == 'data':
+      self.data.append(val)
+
   def popbits(self, num):
     val = 0
     if len(self.data) < num:
@@ -285,6 +244,7 @@ def main():
     b = fin.read(512)
 
   fin.close()
+  dec.finish()
 
 if __name__ == '__main__':
   main()

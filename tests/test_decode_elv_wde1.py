@@ -30,6 +30,7 @@ class test_decode_elv_wde1(unittest.TestCase):
       b = fin.read(512)
 
     fin.close()
+    decoder.finish()
 
   # Feed several real-world samples into the decoder
   # and verify the decoder output
