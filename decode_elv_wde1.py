@@ -199,24 +199,55 @@ class decoder(object):
       logging.warn("Sum read is {0} but computed is {1}".format(sum_read, sum))
       return
 
-    print(time.strftime("time: %x %X"))
-    print("sensor type: " + sensor_types[sensor_type])
-    print("address: {0}".format(dec[0] & 7))
-
-    print("temperature: {0}{1}.{2}".format(("-" if (dec[0]&8) else ''), dec[3]*10+dec[2], dec[1]))
-
+    # compute values
+    decoder_out = {
+      'sensor_type': sensor_type,
+      'sensor_type_str': sensor_types[sensor_type],
+      'address': dec[0] & 7,
+      'temperature': (dec[3]*10. + dec[2] + dec[1]/10.) * (-1. if dec[0]&8 else 1.),
+      'humidity': 0.,
+      'wind': 0.,
+      'rain_sum': 0,
+      'rain_detect': 0,
+      'pressure': 0
+    }
+  
     if sensor_type == 7:
       # Kombisensor
-      print("humidity: {0}".format(dec[5]*10+dec[4]))
-      print("wind: {0}.{1}".format(dec[8]*10+dec[7], dec[6]))
-      print("rain sum: {0}".format(dec[11]*16*16+dec[10]*16+dec[9]))
-      print("rain detector: {0}".format(dec[0]&2 == 1))
+      decoder_out['humidity'] = dec[5]*10. + dec[4]
+      decoder_out['wind'] = dec[8]*10. + dec[7] + dec[6]/10.
+      decoder_out['rain_sum'] = dec[11]*16*16 + dec[10]*16 + dec[9]
+      decoder_out['rain_detect'] = dec[0]&2 == 1
+
     if (sensor_type == 1) or (sensor_type == 4):
       # Thermo/Hygro
-      print("humidity: {0}.{1}".format(dec[6]*10+dec[5], dec[4]))
+      decoder_out['humidity'] = dec[6]*10. + dec[5] + dec[4]/10.
+
     if sensor_type == 4:
       # Thermo/Hygro/Baro
-      print("pressure: {0}".format(200+dec[9]*100+dec[8]*10+dec[7]))
+      decoder_out['pressure'] = 200 + dec[9]*100 + dec[8]*10 + dec[7]
+
+    self.print_decoder_output(decoder_out)
+
+  def print_decoder_output(self, decoder_out):
+    print(time.strftime("time: %x %X"))
+    print("sensor type: " + decoder_out['sensor_type_str'])
+    print("address: {0}".format(decoder_out['address']))
+
+    print("temperature: {0}".format(decoder_out['temperature']))
+
+    if decoder_out['sensor_type'] == 7:
+      # Kombisensor
+      print("humidity: {0}".format(decoder_out['humidity']))
+      print("wind: {0}".format(decoder_out['wind']))
+      print("rain sum: {0}".format(decoder_out['rain_sum']))
+      print("rain detector: {0}".format(decoder_out['rain_detect']))
+    if (decoder_out['sensor_type'] == 1) or (decoder_out['sensor_type'] == 4):
+      # Thermo/Hygro
+      print("humidity: {0}".format(decoder_out['humidity']))
+    if decoder_out['sensor_type'] == 4:
+      # Thermo/Hygro/Baro
+      print("pressure: {0}".format(decoder_out['pressure']))
 
     print
       
