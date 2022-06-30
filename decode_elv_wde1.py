@@ -2,11 +2,11 @@
 
 # Decoder for weather data of sensors from ELV received with RTL SDR
 # Typical usage: 
-# rtl_fm -M -f 868.35M -s 30k | ./decode_elv_wde1.py -
+# rtl_fm -M am -f 868.35M -s 30k | ./decode_elv_wde1.py -
 # Help:
 # ./decode_elv_wde1.py -h
 
-# Copyright 2014 Martin Kompf
+# Copyright 2014,2022 Martin Kompf
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,11 +19,11 @@
 # GNU General Public License for more details.
 # 
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # References:
-# RTL SDR <http://sdr.osmocom.org/trac/wiki/rtl-sdr>
-# The weather sensors are manufactured by ELV <http://www.elv.de/>
+# RTL SDR <https://osmocom.org/projects/rtl-sdr/wiki/Rtl-sdr>
+# The weather sensors are manufactured by ELV <https://www.elv.de/>
 # Helmut Bayerlein describes the communication protocol <http://www.dc3yc.homepage.t-online.de/protocol.htm>
 
 import sys
@@ -261,7 +261,7 @@ class decoder(object):
 def main():
   parser = argparse.ArgumentParser(description='Decoder for weather data of sensors from ELV received with RTL SDR.')
   parser.add_argument('--log', type=str, default='WARN', help='Log level: DEBUG|INFO|WARN|ERROR. Default: WARN')
-  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order and 30 kHz sample rate. Use '-' to read from stdin. Example: rtl_fm -M -f 868.35M -s 30k | ./decode_elv_wde1.py -")
+  parser.add_argument('inputfile', type=str, nargs=1, help="Input file name. Expects a raw file with signed 16-bit samples in platform default byte order and 30 kHz sample rate. Use '-' to read from stdin. Example: rtl_fm -M am -f 868.35M -s 30k | ./decode_elv_wde1.py -")
 
   args = parser.parse_args()
 

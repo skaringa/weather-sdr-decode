@@ -6,14 +6,14 @@ Decoders for wireless weather sensor data received with RTL SDR.
 Prerequisites
 =============
 
-* [rtl-sdr](http://sdr.osmocom.org/trac/wiki/rtl-sdr) 
-* Python 2.7, on slow machines [PyPy](http://pypy.org) is recommended
+* [rtl-sdr](https://osmocom.org/projects/rtl-sdr/wiki/Rtl-sdr) 
+* Python 2.7, on slow machines [PyPy](https://pypy.org) is recommended
 * Wireless weather sensor
 
 decode\_elv\_wde1.py
 ====================
 
-This program decodes weather data produces by wiresless sensors from [ELV](http://www.elv.de).
+This program decodes weather data produces by wiresless sensors from [ELV](https://www.elv.de).
 
 It should work with the following sensors:
 
@@ -26,11 +26,11 @@ I've tested it with:
 * Temperature/Hygro sensor S 300 TH
 * Kombi sensor KS 300-2 (Picture below) 
 
-![Picture of KS 300](http://www.kompf.de/weather/images/20090419_003.jpg)
+![Picture of KS 300](https://www.kompf.de/weather/images/20090419_003.jpg)
 
 *Typical usage:* 
 
-  rtl\_fm -M -f 868.35M -s 30k | ./decode\_elv\_wde1.py -
+  rtl\_fm -M am -f 868.35M -s 30k | ./decode\_elv\_wde1.py -
 
 *Help:* 
 
@@ -39,8 +39,8 @@ I've tested it with:
 References
 ----------
 
-* [RTL SDR](http://sdr.osmocom.org/trac/wiki/rtl-sdr)
-* The weather sensors are manufactured by [ELV](http://www.elv.de/)
+* [RTL SDR](https://osmocom.org/projects/rtl-sdr/wiki/Rtl-sdr)
+* The weather sensors are manufactured by [ELV](https://www.elv.de/)
 * Helmut Bayerlein describes the [communication protocol](http://www.dc3yc.homepage.t-online.de/protocol.htm)
 
 
@@ -49,11 +49,11 @@ decode\_mebus.py
 
 This program decodes weather data produces by wiresless sensors from _Mebus_ like this one:
 
-![Picture of Mebus outdoor sensor](http://www.kompf.de/weather/images/mebus_outdoor.jpg)
+![Picture of Mebus outdoor sensor](https://www.kompf.de/weather/images/mebus_outdoor.jpg)
 
 *Typical usage:* 
 
-  rtl\_fm -M -f 433.84M -s 30k | ./decode\_mebus.py -
+  rtl\_fm -M am -f 433.84M -s 30k | ./decode\_mebus.py -
 
 *Help:* 
 
@@ -62,20 +62,20 @@ This program decodes weather data produces by wiresless sensors from _Mebus_ lik
 References
 ----------
 
-* [RTL SDR](http://sdr.osmocom.org/trac/wiki/rtl-sdr)
+* [RTL SDR](https://osmocom.org/projects/rtl-sdr/wiki/Rtl-sdr)
 * The weather sensors are manufactured by Albert Mebus GmbH, Haan, Germany
 
 Performance
 ===========
 
-To decode in real time on machines with a slower CPU like the Raspberry Pi, the usage of [PyPy](http://pypy.org) as Python interpreter is recommended. The script decode\_elv\_wde1.py runs four times faster with PyPy. To set it as standard interpreter, change the first line of the script into
+To decode in real time on machines with a slower CPU like the Raspberry Pi, the usage of [PyPy](https://pypy.org) as Python interpreter is recommended. The script decode\_elv\_wde1.py runs four times faster with PyPy. To set it as standard interpreter, change the first line of the script into
 
   #!/usr/bin/env pypy
 
 License
 =======
 
-Copyright 2014 Martin Kompf
+Copyright 2014,2022 Martin Kompf
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -88,5 +88,5 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
