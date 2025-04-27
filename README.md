@@ -7,7 +7,7 @@ Prerequisites
 =============
 
 * [rtl-sdr](https://osmocom.org/projects/rtl-sdr/wiki/Rtl-sdr) 
-* Python 2.7, on slow machines [PyPy](https://pypy.org) is recommended
+* Python 2.7 or 3, on slow machines [PyPy](https://pypy.org) is recommended
 * Wireless weather sensor
 
 decode\_elv\_wde1.py
